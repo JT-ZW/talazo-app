@@ -271,7 +271,7 @@ export const useAnalysisStore = create<AnalysisState>()(
 // Notification Types
 export interface Notification {
   id: string;
-  type: 'disease' | 'weather' | 'irrigation' | 'harvest' | 'info';
+  type: 'disease' | 'weather' | 'irrigation' | 'harvest' | 'nutrient' | 'info';
   title: string;
   message: string;
   timestamp: string;
