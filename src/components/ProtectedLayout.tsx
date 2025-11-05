@@ -14,7 +14,7 @@ export default function ProtectedLayout({
 }) {
   const router = useRouter();
   const { isAuthenticated, user } = useAuthStore();
-  const { loadFields } = useFieldsStore();
+  const { syncFields } = useFieldsStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Wait for Zustand to hydrate from localStorage
@@ -33,9 +33,9 @@ export default function ProtectedLayout({
   useEffect(() => {
     if (isAuthenticated && user?.id) {
       console.log('🔄 Loading fields for user:', user.id);
-      loadFields(user.id);
+      syncFields(user.id);
     }
-  }, [isAuthenticated, user?.id, loadFields]);
+  }, [isAuthenticated, user?.id, syncFields]);
 
   // Show nothing while hydrating (prevents flash of redirect)
   if (!isHydrated) {
