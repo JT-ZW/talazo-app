@@ -32,6 +32,62 @@ export default function DashboardPage() {
 
   const recentFields = fields.slice(-3).reverse();
 
+  // Calculate average health score from actual analysis data
+  const calculateAvgHealthScore = () => {
+    if (analyses.length === 0) return 0;
+    
+    const totalScore = analyses.reduce((sum, analysis) => {
+      // Calculate health score based on disease, water, and nutrient data
+      let score = 100;
+      
+      // Deduct for disease
+      if (analysis.disease.detected) {
+        score -= analysis.disease.affectedArea || 0;
+      }
+      
+      // Deduct for water stress
+      if (analysis.water.soilMoisture < 40) {
+        score -= (40 - analysis.water.soilMoisture) * 0.5;
+      } else if (analysis.water.soilMoisture > 80) {
+        score -= (analysis.water.soilMoisture - 80) * 0.3;
+      }
+      
+      // Deduct for nutrient deficiency
+      const avgNutrient = (analysis.nutrient.nitrogen + analysis.nutrient.phosphorus + analysis.nutrient.potassium) / 3;
+      if (avgNutrient < 60) {
+        score -= (60 - avgNutrient) * 0.4;
+      }
+      
+      return sum + Math.max(0, Math.min(100, score));
+    }, 0);
+    
+    return Math.round(totalScore / analyses.length);
+  };
+
+  // Calculate week-over-week trend
+  const calculateHealthTrend = () => {
+    if (analyses.length < 2) return 0;
+    
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const recentAnalyses = analyses.filter(a => new Date(a.timestamp) > oneWeekAgo);
+    const olderAnalyses = analyses.filter(a => new Date(a.timestamp) <= oneWeekAgo);
+    
+    if (olderAnalyses.length === 0) return 0;
+    
+    const recentAvg = recentAnalyses.length > 0 
+      ? recentAnalyses.reduce((sum, a) => sum + (100 - (a.disease.affectedArea || 0)), 0) / recentAnalyses.length
+      : 0;
+    
+    const olderAvg = olderAnalyses.reduce((sum, a) => sum + (100 - (a.disease.affectedArea || 0)), 0) / olderAnalyses.length;
+    
+    return Math.round(recentAvg - olderAvg);
+  };
+
+  const avgHealthScore = calculateAvgHealthScore();
+  const healthTrend = calculateHealthTrend();
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -116,14 +172,16 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-medium text-gray-600">Avg Health Score</p>
               <p className="text-3xl font-bold text-gray-900 mt-2">
-                {totalFields > 0 ? Math.round((healthyFields / totalFields) * 100) : 0}%
+                {avgHealthScore}%
               </p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <TrendingUp className="text-purple-600" size={24} />
             </div>
           </div>
-          <p className="text-sm text-green-600 mt-4">+5% from last week</p>
+          <p className={`text-sm mt-4 ${healthTrend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {healthTrend >= 0 ? '+' : ''}{healthTrend}% from last week
+          </p>
         </div>
       </div>
 

@@ -3,15 +3,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
-import { useFieldsStore, useAnalysisStore } from '@/lib/store';
-import { generateAnalysisFromImage, simulateApiDelay } from '@/lib/mockData';
+import { useFieldsStore, useAnalysisStore, useAuthStore } from '@/lib/store';
+import { analyzeImageWithML } from '@/lib/mlService';
 import { Upload, Image as ImageIcon, CheckCircle, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import SampleImageGallery from '@/components/SampleImageGallery';
 
 const ANALYSIS_STEPS = [
-  { id: 1, name: 'Preprocessing', duration: 1000 },
-  { id: 2, name: 'Feature Detection', duration: 1500 },
-  { id: 3, name: 'AI Classification', duration: 2000 },
+  { id: 1, name: 'Uploading Image', duration: 800 },
+  { id: 2, name: 'AI Detection', duration: 2500 },
+  { id: 3, name: 'Disease Analysis', duration: 1500 },
   { id: 4, name: 'Generating Report', duration: 1000 },
 ];
 
@@ -19,19 +20,47 @@ export default function UploadPage() {
   const router = useRouter();
   const { fields } = useFieldsStore();
   const { addAnalysis, setIsAnalyzing } = useAnalysisStore();
+  const { user } = useAuthStore();
   
   const [selectedField, setSelectedField] = useState('');
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isAerial, setIsAerial] = useState(false);
   const [isAnalyzing, setLocalAnalyzing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [isFromSample, setIsFromSample] = useState(false);
+
+  const handleSampleSelect = async (imageUrl: string, isAerial: boolean) => {
+    try {
+      // Fetch the sample image
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      
+      // Convert to File object
+      const fileName = imageUrl.split('/').pop() || 'sample.jpg';
+      const file = new File([blob], fileName, { type: blob.type });
+      
+      // Set the file and preview
+      setUploadedImage(file);
+      setImagePreview(imageUrl);
+      setIsAerial(isAerial);
+      setAnalysisComplete(false);
+      setIsFromSample(true);
+      
+      toast.success('✨ Sample image loaded - ready to analyze!');
+    } catch (error) {
+      console.error('Error loading sample:', error);
+      toast.error('Failed to load sample image');
+    }
+  };
 
   const onDrop = (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
       setUploadedImage(file);
       setAnalysisComplete(false);
+      setIsFromSample(false);
       
       // Create preview
       const reader = new FileReader();
@@ -69,39 +98,83 @@ export default function UploadPage() {
     setCurrentStep(0);
 
     try {
-      // Simulate analysis steps
+      // Simulate analysis steps with visual progress
       for (let i = 0; i < ANALYSIS_STEPS.length; i++) {
         setCurrentStep(i);
+        
+        // Call real ML API during step 2 (AI Detection)
+        if (i === 1) {
+          // Get crop type from selected field
+          const field = fields.find(f => f.id === selectedField);
+          const cropType = field?.cropType || 'tobacco';
+          
+          const analysisResults = await analyzeImageWithML(uploadedImage, cropType, isAerial);
+          
+          if (!user?.id) {
+            toast.error('You must be logged in');
+            return;
+          }
+
+          // Ensure we have all required fields
+          const completeAnalysis = {
+            fieldId: selectedField,
+            imageUrl: imagePreview || undefined,
+            disease: analysisResults.disease || {
+              detected: false,
+              type: 'Unknown',
+              confidence: 0,
+              affectedArea: 0,
+              severity: 'none',
+              recommendations: [],
+            },
+            nutrient: analysisResults.nutrient || {
+              nitrogen: 0,
+              phosphorus: 0,
+              potassium: 0,
+              primaryDeficiency: 'None',
+              confidence: 0,
+              recommendations: [],
+            },
+            water: analysisResults.water || {
+              status: 'Unknown',
+              soilMoisture: 0,
+              confidence: 0,
+              recommendations: [],
+            },
+            ndvi: analysisResults.ndvi || {
+              average: 0,
+              healthy: 0,
+              stressed: 0,
+              trend: 'stable',
+              historicalData: [],
+            },
+          };
+
+          // Save analysis
+          await addAnalysis(completeAnalysis, user.id);
+
+          // Update field health status based on analysis
+          const selectedFieldData = fields.find(f => f.id === selectedField);
+          if (selectedFieldData) {
+            const { updateField } = useFieldsStore.getState();
+            await updateField(selectedField, {
+              lastScan: new Date().toISOString(),
+              healthStatus: completeAnalysis.disease.detected ? 
+                (completeAnalysis.disease.severity === 'high' ? 'critical' : 'warning') : 
+                'healthy',
+            });
+          }
+        }
+        
         await new Promise(resolve => setTimeout(resolve, ANALYSIS_STEPS[i].duration));
-      }
-
-      // Generate mock analysis results
-      const analysisResults = generateAnalysisFromImage(uploadedImage);
-      
-      // Save analysis
-      addAnalysis({
-        fieldId: selectedField,
-        imageUrl: imagePreview || undefined,
-        ...analysisResults,
-      });
-
-      // Update field health status based on analysis
-      const field = fields.find(f => f.id === selectedField);
-      if (field) {
-        const { updateField } = useFieldsStore.getState();
-        updateField(selectedField, {
-          lastScan: new Date().toISOString(),
-          healthStatus: analysisResults.disease.detected ? 
-            (analysisResults.disease.severity === 'high' ? 'critical' : 'warning') : 
-            'healthy',
-        });
       }
 
       setAnalysisComplete(true);
       setCurrentStep(ANALYSIS_STEPS.length);
-      toast.success('Analysis complete!');
+      toast.success('✅ Real AI analysis complete!');
     } catch (error) {
-      toast.error('Analysis failed');
+      console.error('Analysis error:', error);
+      toast.error('Analysis failed - please try again');
     } finally {
       setLocalAnalyzing(false);
       setIsAnalyzing(false);
@@ -114,6 +187,49 @@ export default function UploadPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Real AI Notice */}
+      {process.env.NEXT_PUBLIC_USE_REAL_ML === 'true' && (
+        <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4">
+          <div className="flex items-start">
+            <CheckCircle className="text-green-500 mt-0.5 mr-3 shrink-0" size={20} />
+            <div className="flex-1">
+              <h3 className="font-semibold text-green-900 mb-1">Real AI Active</h3>
+              <p className="text-sm text-green-800">
+                Using <strong>dual AI analysis system</strong>:
+              </p>
+              <ul className="text-sm text-green-800 mt-2 ml-4 space-y-1">
+                <li>• <strong>Primary:</strong> Hugging Face deep learning model (38+ diseases)</li>
+                <li>• <strong>Backup:</strong> Advanced image analysis (color/texture detection)</li>
+              </ul>
+              <p className="text-sm text-green-700 mt-2">
+                📸 System automatically analyzes your image and provides accurate disease detection - works even offline!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Demo Mode Notice (only if Real ML is disabled) */}
+      {process.env.NEXT_PUBLIC_USE_REAL_ML !== 'true' && (
+        <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertCircle className="text-blue-500 mt-0.5 mr-3 shrink-0" size={20} />
+            <div className="flex-1">
+              <h3 className="font-semibold text-blue-900 mb-1">Demo Mode Active</h3>
+              <p className="text-sm text-blue-800">
+                Using advanced AI simulation for analysis. For production use with custom Roboflow models, 
+                set <code className="bg-blue-100 px-1 rounded">NEXT_PUBLIC_USE_REAL_ML=true</code> in .env.local 
+                and configure your trained models.
+              </p>
+              <p className="text-sm text-blue-700 mt-2 italic">
+                💡 The system generates realistic crop disease analysis based on image characteristics 
+                and field data - perfect for demonstrations and competitions.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Upload & Analyze</h1>
@@ -151,9 +267,25 @@ export default function UploadPage() {
         )}
       </div>
 
+      {/* Sample Image Gallery */}
+      {!imagePreview && (
+        <SampleImageGallery 
+          onSelectImage={handleSampleSelect}
+          disabled={isAnalyzing}
+        />
+      )}
+
       {/* Image Upload */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Upload Image</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Upload Your Own Image</h2>
+          {isFromSample && imagePreview && (
+            <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+              <CheckCircle size={16} />
+              Sample Image Loaded
+            </span>
+          )}
+        </div>
         
         {!imagePreview ? (
           <div
@@ -171,7 +303,7 @@ export default function UploadPage() {
             ) : (
               <>
                 <p className="text-lg text-gray-700 font-semibold mb-2">
-                  Drag & drop field image here
+                  {isFromSample ? 'Or drag & drop your own image here' : 'Drag & drop field image here'}
                 </p>
                 <p className="text-sm text-gray-500 mb-4">
                   or click to browse from your device
@@ -196,19 +328,61 @@ export default function UploadPage() {
                     setUploadedImage(null);
                     setImagePreview(null);
                   }}
-                  className="absolute top-2 right-2 px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
+                  className="absolute top-4 right-4 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Remove
                 </button>
               )}
             </div>
             
+            {/* Image Type Selector */}
+            {!analysisComplete && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Image Type</h3>
+                <div className="flex gap-4">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="imageType"
+                      value="ground"
+                      checked={!isAerial}
+                      onChange={() => setIsAerial(false)}
+                      className="w-4 h-4 text-[#1E4D2B] focus:ring-[#1E4D2B]"
+                      disabled={isAnalyzing}
+                    />
+                    <span className="ml-2 text-sm text-gray-700">
+                      <strong>Ground Level</strong> (Close-up leaf/plant photos)
+                    </span>
+                  </label>
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="imageType"
+                      value="aerial"
+                      checked={isAerial}
+                      onChange={() => setIsAerial(true)}
+                      className="w-4 h-4 text-[#1E4D2B] focus:ring-[#1E4D2B]"
+                      disabled={isAnalyzing}
+                    />
+                    <span className="ml-2 text-sm text-gray-700">
+                      <strong>Aerial/Drone View</strong> (Field-wide health monitoring)
+                    </span>
+                  </label>
+                </div>
+                {isAerial && (
+                  <p className="mt-2 text-xs text-blue-700">
+                    ℹ️ Aerial images analyze overall field health patterns and vegetation coverage
+                  </p>
+                )}
+              </div>
+            )}
+            
             <div className="flex items-center justify-between text-sm text-gray-600">
               <div className="flex items-center">
                 <ImageIcon size={16} className="mr-2" />
                 <span>{uploadedImage?.name}</span>
               </div>
-              <span>{(uploadedImage?.size || 0 / 1024 / 1024).toFixed(2)} MB</span>
+              <span>{((uploadedImage?.size || 0) / 1024 / 1024).toFixed(2)} MB</span>
             </div>
           </div>
         )}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFieldsStore } from '@/lib/store';
+import { useFieldsStore, useAuthStore } from '@/lib/store';
 import { zimbabweanCrops } from '@/lib/mockData';
 import { ArrowLeft, Save, MapPin } from 'lucide-react';
 import Link from 'next/link';
@@ -22,6 +22,7 @@ const FieldMap = dynamic(() => import('@/components/FieldMap'), {
 export default function NewFieldPage() {
   const router = useRouter();
   const { addField } = useFieldsStore();
+  const { user } = useAuthStore();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -41,22 +42,16 @@ export default function NewFieldPage() {
     });
   };
 
-  const handleCoordinatesChange = (newCoordinates: number[][]) => {
+  const handleCoordinatesChange = (newCoordinates: number[][], calculatedArea?: number) => {
     setCoordinates(newCoordinates);
     
-    // Calculate approximate area (very rough estimate)
-    if (newCoordinates.length >= 3) {
-      // Simple polygon area calculation
-      const area = Math.abs(
-        newCoordinates.reduce((sum, coord, i) => {
-          const next = newCoordinates[(i + 1) % newCoordinates.length];
-          return sum + (coord[0] * next[1] - next[0] * coord[1]);
-        }, 0) / 2
-      );
-      
-      // Convert to hectares (very rough approximation)
-      const hectares = Math.round(area * 12321 * 100 * 10) / 10;
-      setFormData(prev => ({ ...prev, area: hectares.toString() }));
+    // Use the accurately calculated area from the map component
+    if (calculatedArea !== undefined && calculatedArea > 0) {
+      console.log(`🎯 Setting field area to: ${calculatedArea} hectares`);
+      setFormData(prev => ({ ...prev, area: calculatedArea.toFixed(2) }));
+    } else if (newCoordinates.length === 0) {
+      // Clear area when polygon is deleted
+      setFormData(prev => ({ ...prev, area: '' }));
     }
   };
 
@@ -81,10 +76,12 @@ export default function NewFieldPage() {
     setIsSubmitting(true);
 
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      addField({
+      if (!user?.id) {
+        toast.error('You must be logged in to add a field');
+        return;
+      }
+
+      await addField({
         name: formData.name,
         cropType: formData.cropType,
         area: parseFloat(formData.area),
@@ -92,7 +89,7 @@ export default function NewFieldPage() {
         coordinates,
         notes: formData.notes,
         healthStatus: 'healthy',
-      });
+      }, user.id);
 
       toast.success('Field added successfully!');
       router.push('/fields');

@@ -226,9 +226,11 @@ export default function ReportsPage() {
                 sortedAnalyses.map((analysis) => {
                   const field = fields.find(f => f.id === analysis.fieldId);
                   const status = getStatusBadge(analysis);
-                  const healthScore = Math.round(
-                    (analysis.nutrient.nitrogen + analysis.nutrient.phosphorus + analysis.nutrient.potassium) / 3
-                  );
+                  
+                  // Calculate health score based on disease impact (consistent with insights page)
+                  const healthScore = analysis.disease.detected
+                    ? Math.max(0, 100 - Math.round(analysis.disease.affectedArea * 1.2))
+                    : 100;
 
                   return (
                     <tr key={analysis.id} className="hover:bg-gray-50">

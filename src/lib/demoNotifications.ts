@@ -1,62 +1,52 @@
-import { useNotificationStore } from './store';
+import { useNotificationStore, useAnalysisStore, useFieldsStore } from './store';
 
 /**
- * Adds sample notifications to demonstrate the notification system
- * Call this function once on app initialization
+ * Adds sample notifications only if there's no real data yet
+ * This helps demonstrate the notification system for new users
  */
 export function addDemoNotifications() {
   if (typeof window === 'undefined') return;
 
   const { addNotification, notifications } = useNotificationStore.getState();
+  const { analyses } = useAnalysisStore.getState();
+  const { fields } = useFieldsStore.getState();
 
-  // Only add demo notifications if there are no notifications yet
-  if (notifications.length > 0) return;
+  // Only add demo notifications if:
+  // 1. There are no notifications yet AND
+  // 2. There are no real analyses (meaning user hasn't uploaded any images yet)
+  if (notifications.length > 0 || analyses.length > 0 || fields.length === 0) return;
+
+  console.log('📢 Adding demo notifications (no real data detected)');
+
+  // Get first field for demo
+  const demoField = fields[0];
 
   // Disease alert
   addNotification({
     type: 'disease',
-    title: '⚠️ Disease Detected: North Field',
-    message: 'Maize Streak Virus detected with 87% confidence. Immediate action recommended.',
+    title: `⚠️ Disease Detected: ${demoField.name}`,
+    message: 'Potential disease detected. Upload crop images for detailed analysis.',
     priority: 'high',
-    fieldId: 'field-1',
-    actionUrl: '/fields/field-1',
+    fieldId: demoField.id,
+    actionUrl: `/fields/${demoField.id}`,
   });
 
   // Irrigation reminder
   addNotification({
     type: 'irrigation',
-    title: '💧 Irrigation Due: South Field',
-    message: 'Tobacco requires irrigation (45 days since planting).',
+    title: `💧 Irrigation Due: ${demoField.name}`,
+    message: `${demoField.cropType} may require irrigation. Check soil moisture levels.`,
     priority: 'medium',
-    fieldId: 'field-2',
-    actionUrl: '/fields/field-2',
+    fieldId: demoField.id,
+    actionUrl: `/fields/${demoField.id}`,
   });
 
-  // Harvest notification
-  addNotification({
-    type: 'harvest',
-    title: '🌾 Harvest in 2 Weeks: East Field',
-    message: 'Wheat will be ready for harvest in approximately 14 days.',
-    priority: 'medium',
-    fieldId: 'field-3',
-    actionUrl: '/fields/field-3',
-  });
-
-  // Weather alert
-  addNotification({
-    type: 'weather',
-    title: '🌧️ Heavy Rain Expected',
-    message: 'Heavy rainfall forecasted for tomorrow. Check drainage systems.',
-    priority: 'high',
-    actionUrl: '/dashboard',
-  });
-
-  // Info notification
+  // Weather info
   addNotification({
     type: 'info',
-    title: '📊 Weekly Report Available',
-    message: 'Your crop health summary for the week is ready to view.',
+    title: '� Upload Images for Analysis',
+    message: 'Upload crop images to get AI-powered health insights and recommendations.',
     priority: 'low',
-    actionUrl: '/reports',
+    actionUrl: '/upload',
   });
 }

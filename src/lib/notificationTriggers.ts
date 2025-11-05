@@ -1,5 +1,6 @@
 import { useFieldsStore, useAnalysisStore, useNotificationStore } from './store';
 import type { AnalysisResult } from './store';
+import { fetchWeatherData, analyzeWeatherAlerts } from './weatherService';
 
 export function initializeNotificationTriggers() {
   if (typeof window === 'undefined') return;
@@ -9,12 +10,16 @@ export function initializeNotificationTriggers() {
     checkFieldConditions();
     checkIrrigationNeeds();
     checkHarvestSchedule();
+    checkWeatherAlerts(); // Added weather checks
+    checkNutrientLevels(); // Added nutrient checks
   }, 5 * 60 * 1000); // 5 minutes
 
-  // Initial check on mount
+  // Initial checks on mount
   checkFieldConditions();
   checkIrrigationNeeds();
   checkHarvestSchedule();
+  checkWeatherAlerts();
+  checkNutrientLevels();
 
   return () => clearInterval(checkInterval);
 }
@@ -207,48 +212,169 @@ function checkHarvestSchedule() {
   });
 }
 
-// Weather-based notifications (mock weather data)
-export function checkWeatherAlerts() {
+// Weather-based notifications using real API data
+export async function checkWeatherAlerts() {
+  const { fields } = useFieldsStore.getState();
   const { addNotification, notifications } = useNotificationStore.getState();
 
-  // Simulate weather check (in production, this would call a weather API)
-  const mockWeatherConditions = [
-    { condition: 'heavy_rain', probability: 0.1 },
-    { condition: 'drought', probability: 0.05 },
-    { condition: 'frost', probability: 0.03 },
-  ];
+  try {
+    // Get user's location (default to Harare, Zimbabwe)
+    const location = { lat: -17.8252, lon: 31.0335 }; // Harare coordinates
+    
+    // Fetch real weather data for user's location
+    const weatherData = await fetchWeatherData(location.lat, location.lon);
+    const alerts = analyzeWeatherAlerts(weatherData);
 
-  mockWeatherConditions.forEach((weather) => {
-    if (Math.random() < weather.probability) {
+    // Add notifications for each weather alert
+    alerts.forEach((alert) => {
+      // Check if we already sent this type of alert recently (within 6 hours)
       const recentWeatherNotif = notifications.find(
         n => n.type === 'weather' &&
-        n.title.includes(weather.condition) &&
-        new Date(n.timestamp).getTime() > Date.now() - 6 * 60 * 60 * 1000 // 6 hours
+        n.title.includes(alert.type) &&
+        new Date(n.timestamp).getTime() > Date.now() - 6 * 60 * 60 * 1000
       );
 
       if (!recentWeatherNotif) {
-        const messages: Record<string, { title: string; message: string }> = {
-          heavy_rain: {
-            title: '🌧️ Heavy Rain Alert',
-            message: 'Heavy rainfall expected in the next 24 hours. Check drainage systems.',
-          },
-          drought: {
-            title: '☀️ Drought Warning',
-            message: 'Extended dry period forecasted. Plan irrigation schedules accordingly.',
-          },
-          frost: {
-            title: '❄️ Frost Warning',
-            message: 'Frost expected tonight. Protect sensitive crops.',
-          },
-        };
-
         addNotification({
           type: 'weather',
-          title: messages[weather.condition].title,
-          message: messages[weather.condition].message,
-          priority: 'high',
+          title: alert.title,
+          message: alert.message,
+          priority: alert.severity,
           actionUrl: '/dashboard',
         });
+      }
+    });
+
+    // Add irrigation recommendations based on weather
+    const { current, forecast } = weatherData;
+    
+    // Check for upcoming dry period
+    const nextDays = forecast.slice(0, 3);
+    const dryDaysCount = nextDays.filter(day => day.precipitation < 10).length;
+    
+    if (dryDaysCount === 3 && current.humidity < 50) {
+      const recentDryNotif = notifications.find(
+        n => n.type === 'irrigation' &&
+        n.title.includes('Dry Period') &&
+        new Date(n.timestamp).getTime() > Date.now() - 24 * 60 * 60 * 1000
+      );
+
+      if (!recentDryNotif && fields.length > 0) {
+        addNotification({
+          type: 'irrigation',
+          title: '☀️ Dry Period Ahead',
+          message: `No significant rainfall expected for 3 days. Consider irrigation for ${fields.length} field(s).`,
+          priority: 'medium',
+          actionUrl: '/fields',
+        });
+      }
+    }
+
+    // Check for good planting conditions
+    if (current.temp >= 20 && current.temp <= 28 && current.humidity >= 50 && current.humidity <= 70) {
+      const recentPlantingNotif = notifications.find(
+        n => n.type === 'info' &&
+        n.title.includes('Planting Conditions') &&
+        new Date(n.timestamp).getTime() > Date.now() - 48 * 60 * 60 * 1000
+      );
+
+      if (!recentPlantingNotif) {
+        addNotification({
+          type: 'info',
+          title: '🌱 Ideal Planting Conditions',
+          message: `Temperature (${current.temp}°C) and humidity (${current.humidity}%) are ideal for planting.`,
+          priority: 'low',
+          actionUrl: '/fields',
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error('Failed to check weather alerts:', error);
+  }
+}
+
+// Check nutrient levels from recent analyses
+function checkNutrientLevels() {
+  const { fields } = useFieldsStore.getState();
+  const { analyses } = useAnalysisStore.getState();
+  const { addNotification, notifications } = useNotificationStore.getState();
+
+  fields.forEach((field) => {
+    const fieldAnalyses = analyses
+      .filter((a: AnalysisResult) => a.fieldId === field.id)
+      .sort((a: AnalysisResult, b: AnalysisResult) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    if (fieldAnalyses.length > 0) {
+      const latestAnalysis = fieldAnalyses[0];
+      const { nitrogen, phosphorus, potassium, primaryDeficiency } = latestAnalysis.nutrient;
+
+      // Critical nutrient deficiency (below 30%)
+      if (nitrogen < 30 || phosphorus < 30 || potassium < 30) {
+        const deficientNutrient = nitrogen < 30 ? 'Nitrogen' : phosphorus < 30 ? 'Phosphorus' : 'Potassium';
+        const level = nitrogen < 30 ? nitrogen : phosphorus < 30 ? phosphorus : potassium;
+
+        const recentNutrientNotif = notifications.find(
+          n => n.fieldId === field.id &&
+          n.type === 'nutrient' &&
+          n.title.includes(deficientNutrient) &&
+          new Date(n.timestamp).getTime() > Date.now() - 72 * 60 * 60 * 1000 // 3 days
+        );
+
+        if (!recentNutrientNotif) {
+          addNotification({
+            type: 'nutrient',
+            title: `⚠️ Critical ${deficientNutrient} Deficiency: ${field.name}`,
+            message: `${deficientNutrient} level at ${level}%. Apply fertilizer immediately to prevent yield loss.`,
+            priority: 'high',
+            fieldId: field.id,
+            actionUrl: `/fields/${field.id}`,
+          });
+        }
+      }
+      // Moderate deficiency (30-50%)
+      else if (nitrogen < 50 || phosphorus < 50 || potassium < 50) {
+        const deficientNutrient = nitrogen < 50 ? 'Nitrogen' : phosphorus < 50 ? 'Phosphorus' : 'Potassium';
+
+        const recentNutrientNotif = notifications.find(
+          n => n.fieldId === field.id &&
+          n.type === 'nutrient' &&
+          n.title.includes('Low') &&
+          new Date(n.timestamp).getTime() > Date.now() - 96 * 60 * 60 * 1000 // 4 days
+        );
+
+        if (!recentNutrientNotif) {
+          addNotification({
+            type: 'nutrient',
+            title: `📊 Low ${deficientNutrient}: ${field.name}`,
+            message: `${deficientNutrient} levels are below optimal. Consider fertilizer application soon.`,
+            priority: 'medium',
+            fieldId: field.id,
+            actionUrl: `/fields/${field.id}`,
+          });
+        }
+      }
+
+      // Water stress alert
+      const { soilMoisture, status } = latestAnalysis.water;
+      if (soilMoisture < 30) {
+        const recentWaterNotif = notifications.find(
+          n => n.fieldId === field.id &&
+          n.type === 'irrigation' &&
+          n.title.includes('Water Stress') &&
+          new Date(n.timestamp).getTime() > Date.now() - 24 * 60 * 60 * 1000
+        );
+
+        if (!recentWaterNotif) {
+          addNotification({
+            type: 'irrigation',
+            title: `💧 Water Stress Detected: ${field.name}`,
+            message: `Soil moisture at ${soilMoisture}%. Irrigation recommended within 24 hours.`,
+            priority: 'high',
+            fieldId: field.id,
+            actionUrl: `/fields/${field.id}`,
+          });
+        }
       }
     }
   });

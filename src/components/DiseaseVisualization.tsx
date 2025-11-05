@@ -8,7 +8,7 @@ interface DiseaseVisualizationProps {
   fieldName: string;
 }
 
-export default function DiseaseVisualization({ analysis, fieldName }: DiseaseVisualizationProps) {
+export default function DiseaseVisualization({ analysis }: DiseaseVisualizationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -21,232 +21,224 @@ export default function DiseaseVisualization({ analysis, fieldName }: DiseaseVis
     const width = canvas.width;
     const height = canvas.height;
 
-    // Clear canvas
     ctx.clearRect(0, 0, width, height);
-
-    // Background gradient
-    const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
-    bgGradient.addColorStop(0, '#f9fafb');
-    bgGradient.addColorStop(1, '#f3f4f6');
-    ctx.fillStyle = bgGradient;
+    ctx.fillStyle = '#f9fafb';
     ctx.fillRect(0, 0, width, height);
 
     if (analysis.disease.detected) {
-      // Disease spread visualization
       const affectedPercent = analysis.disease.affectedArea;
-      const epicenterX = width * 0.65;
-      const epicenterY = height * 0.45;
-
-      // Draw multiple concentric circles to show disease spread
-      const maxRadius = Math.min(width, height) * 0.4;
-      const affectedRadius = (affectedPercent / 100) * maxRadius;
-
-      // Critical zone (innermost - red)
-      if (affectedPercent > 60) {
-        const criticalGradient = ctx.createRadialGradient(
-          epicenterX, epicenterY, 0,
-          epicenterX, epicenterY, affectedRadius * 0.4
-        );
-        criticalGradient.addColorStop(0, 'rgba(220, 38, 38, 0.9)');
-        criticalGradient.addColorStop(1, 'rgba(239, 68, 68, 0.6)');
-        ctx.fillStyle = criticalGradient;
-        ctx.beginPath();
-        ctx.arc(epicenterX, epicenterY, affectedRadius * 0.4, 0, Math.PI * 2);
-        ctx.fill();
+      const healthyPercent = 100 - affectedPercent;
+      const divider = (healthyPercent / 100) * width;
+      
+      const healthyGradient = ctx.createLinearGradient(0, 0, divider, 0);
+      healthyGradient.addColorStop(0, '#10b981');
+      healthyGradient.addColorStop(1, '#34d399');
+      ctx.fillStyle = healthyGradient;
+      ctx.fillRect(0, 0, divider, height);
+      
+      let affectedColor1 = '#fbbf24';
+      let affectedColor2 = '#f59e0b';
+      
+      if (analysis.disease.severity === 'medium') {
+        affectedColor1 = '#f59e0b';
+        affectedColor2 = '#ef4444';
+      } else if (analysis.disease.severity === 'high') {
+        affectedColor1 = '#ef4444';
+        affectedColor2 = '#dc2626';
       }
-
-      // Warning zone (middle - orange)
-      if (affectedPercent > 30) {
-        const warningGradient = ctx.createRadialGradient(
-          epicenterX, epicenterY, affectedRadius * 0.4,
-          epicenterX, epicenterY, affectedRadius * 0.7
-        );
-        warningGradient.addColorStop(0, 'rgba(245, 158, 11, 0.7)');
-        warningGradient.addColorStop(1, 'rgba(251, 191, 36, 0.4)');
-        ctx.fillStyle = warningGradient;
-        ctx.beginPath();
-        ctx.arc(epicenterX, epicenterY, affectedRadius * 0.7, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Affected zone (outer - yellow/light)
-      const affectedGradient = ctx.createRadialGradient(
-        epicenterX, epicenterY, affectedRadius * 0.7,
-        epicenterX, epicenterY, affectedRadius
-      );
-      affectedGradient.addColorStop(0, 'rgba(252, 211, 77, 0.5)');
-      affectedGradient.addColorStop(1, 'rgba(254, 243, 199, 0.2)');
+      
+      const affectedGradient = ctx.createLinearGradient(divider, 0, width, 0);
+      affectedGradient.addColorStop(0, affectedColor1);
+      affectedGradient.addColorStop(1, affectedColor2);
       ctx.fillStyle = affectedGradient;
+      ctx.fillRect(divider, 0, width - divider, height);
+      
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.arc(epicenterX, epicenterY, affectedRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw healthy surrounding area
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-      ctx.fillRect(0, 0, width, height);
-
-      // Cut out the affected area
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(epicenterX, epicenterY, affectedRadius * 1.1, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-
-      // Add glow effect
-      ctx.shadowColor = analysis.disease.severity.toLowerCase() === 'high' ? '#EF4444' : '#F59E0B';
-      ctx.shadowBlur = 30;
-      ctx.strokeStyle = analysis.disease.severity.toLowerCase() === 'high' ? '#DC2626' : '#D97706';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(epicenterX, epicenterY, affectedRadius, 0, Math.PI * 2);
+      ctx.moveTo(divider, 0);
+      ctx.lineTo(divider, height);
       ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Draw impact markers
-      const numMarkers = Math.min(8, Math.floor(affectedPercent / 10));
-      for (let i = 0; i < numMarkers; i++) {
-        const angle = (i / numMarkers) * Math.PI * 2;
-        const markerRadius = affectedRadius * 0.6;
-        const x = epicenterX + Math.cos(angle) * markerRadius;
-        const y = epicenterY + Math.sin(angle) * markerRadius;
-
-        ctx.fillStyle = 'rgba(220, 38, 38, 0.8)';
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+      
+      if (affectedPercent > 0) {
+        ctx.globalAlpha = 0.3;
+        const spotSize = 8;
+        const spotSpacing = 25;
+        
+        for (let x = divider + spotSpacing; x < width; x += spotSpacing) {
+          for (let y = spotSpacing; y < height; y += spotSpacing) {
+            const offsetX = (Math.random() - 0.5) * 10;
+            const offsetY = (Math.random() - 0.5) * 10;
+            
+            ctx.fillStyle = analysis.disease.severity === 'high' ? '#991b1b' : '#9a3412';
+            ctx.beginPath();
+            ctx.arc(x + offsetX, y + offsetY, spotSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
       }
-
-      // Central warning icon
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(epicenterX, epicenterY, 25, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#DC2626';
-      ctx.font = 'bold 28px Arial';
+      
+      ctx.font = 'bold 32px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('⚠', epicenterX, epicenterY);
+      
+      if (divider > 100) {
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowBlur = 8;
+        ctx.fillText('✓ Healthy', divider / 2, height / 2 - 30);
+        ctx.font = 'bold 48px Arial';
+        ctx.fillText(`${healthyPercent}%`, divider / 2, height / 2 + 20);
+        ctx.shadowBlur = 0;
+      }
+      
+      if (width - divider > 100) {
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        ctx.shadowBlur = 10;
+        ctx.font = 'bold 32px Arial';
+        ctx.fillText('⚠ Affected', divider + (width - divider) / 2, height / 2 - 30);
+        ctx.font = 'bold 48px Arial';
+        ctx.fillText(`${affectedPercent}%`, divider + (width - divider) / 2, height / 2 + 20);
+        ctx.shadowBlur = 0;
+      }
 
     } else {
-      // Healthy field - beautiful green gradient
       const healthyGradient = ctx.createRadialGradient(
         width / 2, height / 2, 0,
         width / 2, height / 2, Math.min(width, height) / 2
       );
-      healthyGradient.addColorStop(0, 'rgba(16, 185, 129, 0.8)');
-      healthyGradient.addColorStop(0.5, 'rgba(52, 211, 153, 0.6)');
-      healthyGradient.addColorStop(1, 'rgba(167, 243, 208, 0.3)');
+      healthyGradient.addColorStop(0, '#10b981');
+      healthyGradient.addColorStop(0.5, '#34d399');
+      healthyGradient.addColorStop(1, '#6ee7b7');
       
       ctx.fillStyle = healthyGradient;
-      ctx.beginPath();
-      ctx.arc(width / 2, height / 2, Math.min(width, height) * 0.4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(0, 0, width, height);
 
-      // Draw checkmark
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(width / 2, height / 2, 40, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = '#10B981';
-      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 16;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+      ctx.shadowBlur = 15;
+      
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const size = 80;
       
       ctx.beginPath();
-      ctx.moveTo(width / 2 - 15, height / 2);
-      ctx.lineTo(width / 2 - 5, height / 2 + 10);
-      ctx.lineTo(width / 2 + 15, height / 2 - 10);
+      ctx.moveTo(centerX - size, centerY);
+      ctx.lineTo(centerX - size / 3, centerY + size / 2);
+      ctx.lineTo(centerX + size, centerY - size / 2);
       ctx.stroke();
+      ctx.shadowBlur = 0;
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 42px Arial';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+      ctx.shadowBlur = 8;
+      ctx.fillText('100% Healthy', centerX, centerY + size + 50);
+      ctx.shadowBlur = 0;
     }
 
-    // Add field boundary
-    ctx.strokeStyle = '#374151';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([10, 5]);
-    ctx.strokeRect(20, 20, width - 40, height - 40);
-    ctx.setLineDash([]);
+    ctx.strokeStyle = '#d1d5db';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(0, 0, width, height);
 
   }, [analysis]);
 
   return (
-    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 shadow-xl">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-gray-900">Disease Impact Visualization</h3>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-          <span className="text-sm font-medium text-gray-700">
-            {analysis.disease.detected ? 'Active Detection' : 'No Issues'}
-          </span>
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex-1">
+          <h4 className="font-bold text-gray-900 text-lg">Disease Coverage</h4>
+          <p className="text-sm text-gray-600 mt-1">
+            Visual representation of affected vs healthy field area
+          </p>
         </div>
+        {analysis.disease.detected && (
+          <div className="sm:text-right">
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
+              analysis.disease.severity === 'high' ? 'bg-red-100 text-red-700' :
+              analysis.disease.severity === 'medium' ? 'bg-orange-100 text-orange-700' :
+              'bg-yellow-100 text-yellow-700'
+            }`}>
+              {analysis.disease.severity.toUpperCase()} SEVERITY
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="relative">
+      <div className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden shadow-sm">
         <canvas
           ref={canvasRef}
-          width={700}
-          height={450}
-          className="w-full h-auto rounded-lg shadow-inner"
+          width={800}
+          height={300}
+          className="w-full h-auto max-w-full"
         />
-
-        {/* Legend overlay */}
-        <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-4 space-y-2 border border-gray-200">
-          <h4 className="font-bold text-xs text-gray-900 mb-2">SEVERITY ZONES</h4>
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-red-600 to-red-500 border-2 border-white shadow"></div>
-              <span className="text-xs text-gray-700 font-medium">Critical (&gt;60%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-500 to-yellow-400 border-2 border-white shadow"></div>
-              <span className="text-xs text-gray-700 font-medium">Warning (30-60%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-yellow-300 to-yellow-100 border-2 border-white shadow"></div>
-              <span className="text-xs text-gray-700 font-medium">Affected (&lt;30%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-500 to-green-400 border-2 border-white shadow"></div>
-              <span className="text-xs text-gray-700 font-medium">Healthy</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Field info overlay */}
-        <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-4 py-3 border border-gray-200">
-          <p className="text-xs text-gray-600 font-medium mb-1">FIELD NAME</p>
-          <p className="text-sm font-bold text-gray-900">{fieldName}</p>
-          {analysis.disease.detected && (
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <p className="text-xs text-gray-600 font-medium mb-1">DETECTION</p>
-              <p className="text-sm font-bold text-red-600">{analysis.disease.type}</p>
-              <p className="text-xs text-gray-600 mt-1">
-                {analysis.disease.confidence}% confidence
-              </p>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Statistics bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg p-3 sm:p-4 text-white shadow">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-3 h-3 bg-white rounded-full shrink-0"></div>
+            <span className="text-xs font-bold uppercase tracking-wide">Healthy Area</span>
+          </div>
+          <p className="text-xl sm:text-2xl font-bold">
+            {analysis.disease.detected ? 100 - analysis.disease.affectedArea : 100}%
+          </p>
+        </div>
+        
+        {analysis.disease.detected && (
+          <>
+            <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-3 sm:p-4 text-white shadow">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-white rounded-full shrink-0"></div>
+                <span className="text-xs font-bold uppercase tracking-wide">Affected Area</span>
+              </div>
+              <p className="text-xl sm:text-2xl font-bold">{analysis.disease.affectedArea}%</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3 sm:p-4 text-white shadow">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-white rounded-full shrink-0"></div>
+                <span className="text-xs font-bold uppercase tracking-wide">Confidence</span>
+              </div>
+              <p className="text-xl sm:text-2xl font-bold">{analysis.disease.confidence}%</p>
+            </div>
+            
+            <div className={`rounded-lg p-3 sm:p-4 text-white shadow ${
+              analysis.disease.severity === 'high' ? 'bg-gradient-to-br from-red-600 to-red-700' :
+              analysis.disease.severity === 'medium' ? 'bg-gradient-to-br from-orange-500 to-orange-600' :
+              'bg-gradient-to-br from-yellow-500 to-yellow-600'
+            }`}>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-white rounded-full shrink-0"></div>
+                <span className="text-xs font-bold uppercase tracking-wide">Severity</span>
+              </div>
+              <p className="text-lg sm:text-xl font-bold uppercase">{analysis.disease.severity}</p>
+            </div>
+          </>
+        )}
+      </div>
+
       {analysis.disease.detected && (
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          <div className="bg-white rounded-lg p-3 text-center shadow">
-            <p className="text-xs text-gray-600 font-medium mb-1">Affected Area</p>
-            <p className="text-2xl font-bold text-red-600">{analysis.disease.affectedArea}%</p>
-          </div>
-          <div className="bg-white rounded-lg p-3 text-center shadow">
-            <p className="text-xs text-gray-600 font-medium mb-1">Severity</p>
-            <p className="text-lg font-bold text-orange-600 uppercase">{analysis.disease.severity}</p>
-          </div>
-          <div className="bg-white rounded-lg p-3 text-center shadow">
-            <p className="text-xs text-gray-600 font-medium mb-1">Confidence</p>
-            <p className="text-2xl font-bold text-gray-900">{analysis.disease.confidence}%</p>
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
+              <span className="text-white text-xl">⚠</span>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-900 mb-1">{analysis.disease.type}</h4>
+              <p className="text-sm text-gray-700">
+                Detected in <strong>{analysis.disease.affectedArea}%</strong> of the field with <strong>{analysis.disease.confidence}% confidence</strong>.
+                {analysis.disease.severity === 'high' && ' Immediate action recommended.'}
+                {analysis.disease.severity === 'medium' && ' Monitor closely and treat as needed.'}
+                {analysis.disease.severity === 'low' && ' Early detection - preventive measures advised.'}
+              </p>
+            </div>
           </div>
         </div>
       )}

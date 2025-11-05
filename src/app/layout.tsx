@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import NotificationInitializer from '@/components/NotificationInitializer';
+import FloatingChatButton from '@/components/FloatingChatButton';
 
 export const metadata: Metadata = {
   title: "Talazo Agritech - Precision Agriculture for Zimbabwe",
@@ -16,9 +17,11 @@ export default function RootLayout({
     <html lang="en">
       <body
         className="antialiased font-sans"
+        suppressHydrationWarning
       >
         <NotificationInitializer />
         {children}
+        <FloatingChatButton />
       </body>
     </html>
   );

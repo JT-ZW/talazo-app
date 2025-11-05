@@ -1,4 +1,23 @@
 import { Field, AnalysisResult } from './store';
+import { generatePDFReport, generateFieldReport } from './pdfGenerator';
+
+// Export single analysis as PDF
+export async function exportAnalysisPDF(
+  analysis: AnalysisResult,
+  field: Field,
+  farmName?: string
+): Promise<void> {
+  await generatePDFReport(analysis, field, farmName);
+}
+
+// Export field report with all analyses as PDF
+export async function exportFieldPDF(
+  field: Field,
+  analyses: AnalysisResult[],
+  farmName?: string
+): Promise<void> {
+  await generateFieldReport(field, analyses, farmName);
+}
 
 // Export fields to CSV
 export const exportFieldsToCSV = (fields: Field[]) => {
@@ -20,7 +39,7 @@ export const exportFieldsToCSV = (fields: Field[]) => {
   downloadFile(csvContent, 'talazo-fields-export.csv', 'text/csv');
 };
 
-// Export analyses to CSV
+// Export analysis data as CSV
 export const exportAnalysesToCSV = (analyses: AnalysisResult[]) => {
   const headers = ['Field ID', 'Date', 'Disease Detected', 'Disease Type', 'Confidence', 'Severity', 'Primary Deficiency'];
   const rows = analyses.map(analysis => [

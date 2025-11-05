@@ -1,13 +1,15 @@
 // Mock data for Zimbabwean agricultural context
 
+// 8 Priority Crops with ML Support
 export const zimbabweanCrops = [
   { id: 'maize', name: 'Maize', season: 'Summer', averageYield: '5-7 tons/ha' },
   { id: 'tobacco', name: 'Tobacco', season: 'Summer', averageYield: '2.5-3.5 tons/ha' },
   { id: 'wheat', name: 'Wheat', season: 'Winter', averageYield: '6-8 tons/ha' },
   { id: 'cotton', name: 'Cotton', season: 'Summer', averageYield: '2-3 tons/ha' },
-  { id: 'soya', name: 'Soya Bean', season: 'Summer', averageYield: '2-3 tons/ha' },
-  { id: 'sunflower', name: 'Sunflower', season: 'Summer', averageYield: '1.5-2 tons/ha' },
-  { id: 'groundnuts', name: 'Groundnuts', season: 'Summer', averageYield: '1-1.5 tons/ha' },
+  { id: 'potato', name: 'Seed Potatoes', season: 'Year-round', averageYield: '25-35 tons/ha' },
+  { id: 'tomato', name: 'Tomatoes', season: 'Year-round', averageYield: '40-60 tons/ha' },
+  { id: 'watermelon', name: 'Watermelons', season: 'Summer', averageYield: '30-40 tons/ha' },
+  { id: 'blueberry', name: 'Blueberries', season: 'Year-round', averageYield: '8-12 tons/ha' },
 ];
 
 export const commonDiseases = [

@@ -1,5 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { signUpWithSupabase, signInWithSupabase, signOutFromSupabase } from './supabaseAuth';
+import {
+  fetchFields,
+  addFieldToSupabase,
+  updateFieldInSupabase,
+  deleteFieldFromSupabase,
+} from './supabaseFields';
+import {
+  fetchAnalyses,
+  addAnalysisToSupabase,
+  deleteAnalysisFromSupabase,
+} from './supabaseAnalyses';
 
 // Types
 export interface User {
@@ -75,35 +87,43 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
       login: async (email: string, password: string) => {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const result = await signInWithSupabase(email, password);
         
-        // Mock authentication - accept any email/password for prototype
-        const user: User = {
-          id: `user-${Date.now()}`,
-          email,
-          name: email.split('@')[0],
-          subscriptionTier: 'free',
-        };
+        if (result.success && result.user) {
+          const user: User = {
+            id: result.user.id,
+            email: result.user.email,
+            name: result.user.name,
+            subscriptionTier: 'free',
+          };
+          
+          set({ user, isAuthenticated: true });
+          return true;
+        }
         
-        set({ user, isAuthenticated: true });
-        return true;
+        console.error('Login failed:', result.error);
+        return false;
       },
       signup: async (email: string, password: string, name: string) => {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const result = await signUpWithSupabase(email, password, name);
         
-        const user: User = {
-          id: `user-${Date.now()}`,
-          email,
-          name,
-          subscriptionTier: 'free',
-        };
+        if (result.success && result.user) {
+          const user: User = {
+            id: result.user.id,
+            email: result.user.email,
+            name: result.user.name,
+            subscriptionTier: 'free',
+          };
+          
+          set({ user, isAuthenticated: true });
+          return true;
+        }
         
-        set({ user, isAuthenticated: true });
-        return true;
+        console.error('Signup failed:', result.error);
+        return false;
       },
-      logout: () => {
+      logout: async () => {
+        await signOutFromSupabase();
         set({ user: null, isAuthenticated: false });
       },
       updateProfile: (updates: Partial<User>) => {
@@ -122,9 +142,11 @@ export const useAuthStore = create<AuthState>()(
 // Fields Store
 interface FieldsState {
   fields: Field[];
-  addField: (field: Omit<Field, 'id'>) => void;
-  updateField: (id: string, updates: Partial<Field>) => void;
-  deleteField: (id: string) => void;
+  isLoading: boolean;
+  syncFields: (userId: string) => Promise<void>;
+  addField: (field: Omit<Field, 'id'>, userId: string) => Promise<void>;
+  updateField: (id: string, updates: Partial<Field>) => Promise<void>;
+  deleteField: (id: string) => Promise<void>;
   getField: (id: string) => Field | undefined;
 }
 
@@ -132,24 +154,49 @@ export const useFieldsStore = create<FieldsState>()(
   persist(
     (set, get) => ({
       fields: [],
-      addField: (field) => {
-        const newField: Field = {
-          ...field,
-          id: `field-${Date.now()}`,
-        };
-        set((state) => ({ fields: [...state.fields, newField] }));
+      isLoading: false,
+      syncFields: async (userId: string) => {
+        set({ isLoading: true });
+        const fields = await fetchFields(userId);
+        set({ fields, isLoading: false });
       },
-      updateField: (id, updates) => {
-        set((state) => ({
-          fields: state.fields.map((field) =>
-            field.id === id ? { ...field, ...updates } : field
-          ),
-        }));
+      addField: async (field, userId) => {
+        set({ isLoading: true });
+        const newField = await addFieldToSupabase(userId, field);
+        if (newField) {
+          set((state) => ({ 
+            fields: [...state.fields, newField],
+            isLoading: false 
+          }));
+        } else {
+          set({ isLoading: false });
+        }
       },
-      deleteField: (id) => {
-        set((state) => ({
-          fields: state.fields.filter((field) => field.id !== id),
-        }));
+      updateField: async (id, updates) => {
+        set({ isLoading: true });
+        const success = await updateFieldInSupabase(id, updates);
+        if (success) {
+          set((state) => ({
+            fields: state.fields.map((field) =>
+              field.id === id ? { ...field, ...updates } : field
+            ),
+            isLoading: false,
+          }));
+        } else {
+          set({ isLoading: false });
+        }
+      },
+      deleteField: async (id) => {
+        set({ isLoading: true });
+        const success = await deleteFieldFromSupabase(id);
+        if (success) {
+          set((state) => ({
+            fields: state.fields.filter((field) => field.id !== id),
+            isLoading: false,
+          }));
+        } else {
+          set({ isLoading: false });
+        }
       },
       getField: (id) => {
         return get().fields.find((field) => field.id === id);
@@ -166,7 +213,9 @@ interface AnalysisState {
   analyses: AnalysisResult[];
   currentAnalysis: AnalysisResult | null;
   isAnalyzing: boolean;
-  addAnalysis: (analysis: Omit<AnalysisResult, 'id' | 'timestamp'>) => void;
+  syncAnalyses: (userId: string) => Promise<void>;
+  addAnalysis: (analysis: Omit<AnalysisResult, 'id' | 'timestamp'>, userId: string) => Promise<void>;
+  deleteAnalysis: (id: string) => Promise<void>;
   setCurrentAnalysis: (analysis: AnalysisResult | null) => void;
   setIsAnalyzing: (isAnalyzing: boolean) => void;
   getFieldAnalyses: (fieldId: string) => AnalysisResult[];
@@ -178,16 +227,30 @@ export const useAnalysisStore = create<AnalysisState>()(
       analyses: [],
       currentAnalysis: null,
       isAnalyzing: false,
-      addAnalysis: (analysis) => {
-        const newAnalysis: AnalysisResult = {
-          ...analysis,
-          id: `analysis-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-        };
-        set((state) => ({
-          analyses: [...state.analyses, newAnalysis],
-          currentAnalysis: newAnalysis,
-        }));
+      syncAnalyses: async (userId: string) => {
+        const analyses = await fetchAnalyses(userId);
+        set({ analyses });
+      },
+      addAnalysis: async (analysis, userId) => {
+        set({ isAnalyzing: true });
+        const newAnalysis = await addAnalysisToSupabase(userId, analysis);
+        if (newAnalysis) {
+          set((state) => ({
+            analyses: [...state.analyses, newAnalysis],
+            currentAnalysis: newAnalysis,
+            isAnalyzing: false,
+          }));
+        } else {
+          set({ isAnalyzing: false });
+        }
+      },
+      deleteAnalysis: async (id: string) => {
+        const success = await deleteAnalysisFromSupabase(id);
+        if (success) {
+          set((state) => ({
+            analyses: state.analyses.filter((a) => a.id !== id),
+          }));
+        }
       },
       setCurrentAnalysis: (analysis) => {
         set({ currentAnalysis: analysis });

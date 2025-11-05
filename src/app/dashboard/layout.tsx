@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
+import ChatInterface from '@/components/ChatInterface';
+import { SupabaseSync } from '@/components/SupabaseSync';
 import { Toaster } from 'react-hot-toast';
 
 export default function DashboardLayout({
@@ -28,6 +30,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-right" />
+      <SupabaseSync />
       <Sidebar />
       <div className="lg:ml-64">
         <Navbar />
@@ -35,6 +38,8 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      {/* Floating AI Assistant */}
+      <ChatInterface position="floating" initiallyMinimized={true} />
     </div>
   );
 }

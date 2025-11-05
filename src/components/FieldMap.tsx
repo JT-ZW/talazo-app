@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
+import { calculatePolygonArea, formatArea } from '@/lib/geoUtils';
 
 // Fix for default marker icons in Leaflet
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,7 +18,7 @@ L.Icon.Default.mergeOptions({
 
 interface FieldMapProps {
   coordinates?: number[][];
-  onCoordinatesChange?: (coordinates: number[][]) => void;
+  onCoordinatesChange?: (coordinates: number[][], area?: number) => void;
   center?: [number, number];
   zoom?: number;
   editable?: boolean;
@@ -36,6 +37,7 @@ export default function FieldMap({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const [currentArea, setCurrentArea] = useState<number>(0);
 
   useEffect(() => {
     setIsClient(true);
@@ -47,27 +49,41 @@ export default function FieldMap({
     // Initialize map
     const map = L.map(mapRef.current).setView(center, zoom);
 
-    // Add OpenStreetMap tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+    // Add high-quality tile layers
+    const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
-    }).addTo(map);
+      minZoom: 3,
+    });
 
-    // Add satellite imagery option (using ESRI)
+    // High-quality satellite imagery (Esri World Imagery)
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri',
+      attribution: 'Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 19,
+      minZoom: 3,
+    });
+
+    // Hybrid view (satellite with labels) - RECOMMENDED DEFAULT
+    const labelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Labels © Esri',
       maxZoom: 19,
     });
 
-    // Layer control
+    // Add default layers (satellite + labels for best experience)
+    satellite.addTo(map);
+    labelsLayer.addTo(map);
+
+    // Layer control - allow toggling labels on/off
     const baseMaps = {
-      'Street Map': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-      }),
       'Satellite': satellite,
+      'Street Map': streetMap,
     };
 
-    L.control.layers(baseMaps).addTo(map);
+    const overlayMaps = {
+      'Place Names & Boundaries': labelsLayer,
+    };
+
+    L.control.layers(baseMaps, overlayMaps).addTo(map);
 
     // Initialize feature group for drawn items
     const drawnItems = new L.FeatureGroup();
@@ -120,8 +136,13 @@ export default function FieldMap({
           latlng.lng,
         ]);
 
+        // Calculate area in hectares
+        const areaInHectares = calculatePolygonArea(coords);
+        setCurrentArea(areaInHectares);
+        console.log(`📏 Calculated area: ${formatArea(areaInHectares)}`);
+
         if (onCoordinatesChange) {
-          onCoordinatesChange(coords);
+          onCoordinatesChange(coords, areaInHectares);
         }
       });
 
@@ -133,15 +154,21 @@ export default function FieldMap({
             latlng.lng,
           ]);
 
+          // Recalculate area after edit
+          const areaInHectares = calculatePolygonArea(coords);
+          setCurrentArea(areaInHectares);
+          console.log(`📏 Updated area: ${formatArea(areaInHectares)}`);
+
           if (onCoordinatesChange) {
-            onCoordinatesChange(coords);
+            onCoordinatesChange(coords, areaInHectares);
           }
         });
       });
 
       map.on(L.Draw.Event.DELETED, () => {
+        setCurrentArea(0);
         if (onCoordinatesChange) {
-          onCoordinatesChange([]);
+          onCoordinatesChange([], 0);
         }
       });
     }
@@ -209,6 +236,11 @@ export default function FieldMap({
         <div className="absolute top-4 right-14 bg-white px-3 py-2 rounded shadow-lg text-sm z-[1000]">
           <p className="font-semibold text-gray-700">Draw your field:</p>
           <p className="text-gray-600 text-xs">Use the polygon tool to mark boundaries</p>
+          {currentArea > 0 && (
+            <p className="mt-2 text-green-700 font-bold">
+              Area: {formatArea(currentArea)}
+            </p>
+          )}
         </div>
       )}
     </div>

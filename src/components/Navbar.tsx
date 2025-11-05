@@ -1,18 +1,62 @@
 'use client';
 
-import { Search, Cloud, CloudRain, Sun } from 'lucide-react';
-import { mockWeatherData } from '@/lib/mockData';
+import { Search, Cloud, CloudRain, Sun, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { fetchWeatherData, type WeatherData } from '@/lib/weatherService';
+import { CONFIG } from '@/lib/config';
 import NotificationCenter from './NotificationCenter';
 
 export default function Navbar() {
-  const weather = mockWeatherData.current;
+  const [weather, setWeather] = useState<WeatherData['current'] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [locationName, setLocationName] = useState<string>('');
+
+  useEffect(() => {
+    async function loadWeather() {
+      try {
+        // Get user's location first
+        const { getUserLocation } = await import('@/lib/weatherService');
+        const location = await getUserLocation();
+        
+        // Fetch weather for user's location
+        const data = await fetchWeatherData(location.lat, location.lon);
+        setWeather(data.current);
+        
+        // Get location name from reverse geocoding
+        if (location.city) {
+          setLocationName(location.city);
+        } else {
+          // Fetch location name from coordinates
+          const locationData = await fetch(
+            `https://api.openweathermap.org/geo/1.0/reverse?lat=${location.lat}&lon=${location.lon}&limit=1&appid=${process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY}`
+          );
+          if (locationData.ok) {
+            const [place] = await locationData.json();
+            setLocationName(place?.name || 'Your Location');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load weather:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadWeather();
+  }, []);
 
   const getWeatherIcon = () => {
+    if (!weather) return <Cloud size={20} className="text-gray-400" />;
+    
     switch (weather.condition) {
+      case 'Clear':
       case 'Sunny':
         return <Sun size={20} className="text-amber-500" />;
-      case 'Rainy':
+      case 'Rain':
+      case 'Drizzle':
+      case 'Thunderstorm':
         return <CloudRain size={20} className="text-blue-500" />;
+      case 'Clouds':
+        return <Cloud size={20} className="text-gray-500" />;
       default:
         return <Cloud size={20} className="text-gray-500" />;
     }
@@ -36,10 +80,33 @@ export default function Navbar() {
       <div className="flex items-center space-x-6 ml-6">
         {/* Weather widget */}
         <div className="hidden md:flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg">
-          {getWeatherIcon()}
+          {isLoading ? (
+            <Loader2 size={20} className="text-gray-400 animate-spin" />
+          ) : (
+            getWeatherIcon()
+          )}
           <div className="text-sm">
-            <p className="font-semibold text-gray-900">{weather.temp}°C</p>
-            <p className="text-xs text-gray-500">{weather.condition}</p>
+            {isLoading ? (
+              <>
+                <p className="font-semibold text-gray-400">--°C</p>
+                <p className="text-xs text-gray-400">Loading...</p>
+              </>
+            ) : weather ? (
+              <>
+                <p className="font-semibold text-gray-900">{weather.temp}°C</p>
+                <p className="text-xs text-gray-500 truncate max-w-[100px]" title={locationName || weather.condition}>
+                  {locationName || weather.condition}
+                </p>
+                {!CONFIG.USE_REAL_WEATHER && (
+                  <span className="text-xs text-orange-500 font-medium">DEMO</span>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-gray-400">--°C</p>
+                <p className="text-xs text-gray-400">Unavailable</p>
+              </>
+            )}
           </div>
         </div>
 
