@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/lib/store';
+import { useAuthStore, useFieldsStore } from '@/lib/store';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
 import { Toaster } from 'react-hot-toast';
@@ -13,7 +13,8 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const { loadFields } = useFieldsStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Wait for Zustand to hydrate from localStorage
@@ -27,6 +28,14 @@ export default function ProtectedLayout({
       router.push('/login');
     }
   }, [isAuthenticated, isHydrated, router]);
+
+  // Load fields when user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      console.log('🔄 Loading fields for user:', user.id);
+      loadFields(user.id);
+    }
+  }, [isAuthenticated, user?.id, loadFields]);
 
   // Show nothing while hydrating (prevents flash of redirect)
   if (!isHydrated) {

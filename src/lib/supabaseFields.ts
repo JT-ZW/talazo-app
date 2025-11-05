@@ -36,6 +36,8 @@ export async function fetchFields(userId: string): Promise<Field[]> {
 // Add a new field
 export async function addFieldToSupabase(userId: string, field: Omit<Field, 'id'>): Promise<Field | null> {
   try {
+    console.log('📡 Attempting to add field to Supabase:', { userId, fieldName: field.name });
+    
     const { data, error } = await supabase
       .from('fields')
       .insert({
@@ -53,9 +55,11 @@ export async function addFieldToSupabase(userId: string, field: Omit<Field, 'id'
       .single();
 
     if (error) {
-      console.error('Error adding field:', error);
-      return null;
+      console.error('❌ Supabase error adding field:', error);
+      throw new Error(`Failed to save field: ${error.message}`);
     }
+
+    console.log('✅ Field added to Supabase:', data);
 
     // Transform back to app format
     return {
@@ -70,8 +74,8 @@ export async function addFieldToSupabase(userId: string, field: Omit<Field, 'id'
       notes: data.notes || undefined,
     };
   } catch (error) {
-    console.error('Error in addFieldToSupabase:', error);
-    return null;
+    console.error('❌ Error in addFieldToSupabase:', error);
+    throw error;
   }
 }
 

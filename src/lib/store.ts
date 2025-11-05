@@ -162,14 +162,20 @@ export const useFieldsStore = create<FieldsState>()(
       },
       addField: async (field, userId) => {
         set({ isLoading: true });
-        const newField = await addFieldToSupabase(userId, field);
-        if (newField) {
-          set((state) => ({ 
-            fields: [...state.fields, newField],
-            isLoading: false 
-          }));
-        } else {
+        try {
+          const newField = await addFieldToSupabase(userId, field);
+          if (newField) {
+            set((state) => ({ 
+              fields: [...state.fields, newField],
+              isLoading: false 
+            }));
+          } else {
+            set({ isLoading: false });
+            throw new Error('Failed to add field to database');
+          }
+        } catch (error) {
           set({ isLoading: false });
+          throw error;
         }
       },
       updateField: async (id, updates) => {

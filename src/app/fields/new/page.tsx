@@ -73,13 +73,21 @@ export default function NewFieldPage() {
       return;
     }
 
+    if (!user?.id) {
+      toast.error('You must be logged in to add a field');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      if (!user?.id) {
-        toast.error('You must be logged in to add a field');
-        return;
-      }
+      console.log('🌱 Adding field:', {
+        name: formData.name,
+        cropType: formData.cropType,
+        area: parseFloat(formData.area),
+        userId: user.id,
+        coordinatesCount: coordinates.length
+      });
 
       await addField({
         name: formData.name,
@@ -91,10 +99,12 @@ export default function NewFieldPage() {
         healthStatus: 'healthy',
       }, user.id);
 
+      console.log('✅ Field added successfully');
       toast.success('Field added successfully!');
       router.push('/fields');
     } catch (error) {
-      toast.error('Failed to add field');
+      console.error('❌ Failed to add field:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to add field');
     } finally {
       setIsSubmitting(false);
     }
